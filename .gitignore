@@ -3,3 +3,6 @@
 
 # PyCharm
 .idea/
+
+# Cache
+src/utils/__pycache__/
