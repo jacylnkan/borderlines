@@ -85,12 +85,3 @@ need fallback codes such as the US, UK, and France. The sovereignty shapes group
 islands and overseas territories. The landmass cutoff removes small components,
 but large distant territories can still make targets widely dispersed. Dataset
 borders and groupings define the game's reference shapes.
-
-## Checks
-
-```bash
-python -m unittest discover -s tests
-pre-commit run --all-files
-```
-
-Multiplayer competition and winner selection are planned for later iterations.

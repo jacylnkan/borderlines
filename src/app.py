@@ -31,7 +31,7 @@ landmass_cutoff = st.sidebar.slider(
     value=5,
     help=(
         "Keep landmasses at least this percentage of the largest landmass's geographic area. "
-        "0 includes everything. 20 keeps only the largest landmass."
+        "0 includes everything. 20 keeps landmasses at least one fifth as large as the largest."
     ),
 )
 
@@ -71,7 +71,7 @@ canvas_result = st_canvas(
     width=700,
     update_streamlit=True,
     drawing_mode="freedraw",
-    return_image_data=True,
+    return_image_data=False,
     key=f"canvas_{country_code_str}",
 )
 
@@ -92,11 +92,6 @@ if st.button("Submit drawing", type="primary", disabled=geometry is None):
                 "country_code": country_code_str,
                 "country_name": country_names[country_code_str],
                 "drawing": deepcopy(drawing),
-                "image": (
-                    canvas_result.image_data.copy()
-                    if canvas_result.image_data is not None
-                    else None
-                ),
                 "score": score_breakdown["score"],
                 "score_breakdown": score_breakdown,
                 "landmass_cutoff": landmass_cutoff,
