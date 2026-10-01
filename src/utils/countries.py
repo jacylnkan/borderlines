@@ -1,15 +1,16 @@
 import pycountry
 
+from src.utils.geography import load_country_geometries
+
 
 def format_country_name(country: pycountry.db.Country) -> str:
-    """
-    Format the country name for display in the selectbox, including the country flag.
+    """Build a readable country label with its flag for the sidebar dropdown.
 
     Args:
-        country (pycountry.db.Country): A pycountry ExistingCountries object.
+        country (pycountry.db.Country): Country record exposing ``name`` and ``flag``.
 
     Returns:
-        str: Formatted string with country name and flag.
+        str: Reformatted country name followed by a space and its flag emoji.
     """
     # Countries that include a comma in their name as well as one of the following words as the
     # last word must be reformatted. Examples:
@@ -34,10 +35,21 @@ def format_country_name(country: pycountry.db.Country) -> str:
 
 
 def get_all_country_names() -> dict[str, str]:
-    """Retrieve all countries and their corresponding alpha-2 codes.
+    """Retrieve countries supported by the map dataset and their alpha-2 codes.
+
+    Intersect pycountry records with the keys returned by the cached geometry loader.
+    Sort by the formatted display label so dictionary iteration matches dropdown order.
+    Territories without a separately mapped geometry are omitted.
 
     Returns:
-        dict[str, str]: A dictionary mapping country alpha-2 codes to formatted country names.
+        dict[str, str]: ISO alpha-2 codes mapped to country labels including flag emojis,
+        in ascending display-label order.
+
+    Raises:
+        FileNotFoundError: A required map-data file is missing. Other errors from
+            ``load_country_geometries`` propagate to the caller.
     """
-    countries = sorted(pycountry.countries, key=lambda country: country.name)
+    geometries = load_country_geometries()
+    countries = [country for country in pycountry.countries if country.alpha_2 in geometries]
+    countries.sort(key=format_country_name)
     return {country.alpha_2: format_country_name(country) for country in countries}
