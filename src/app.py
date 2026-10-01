@@ -3,10 +3,10 @@ from copy import deepcopy
 import streamlit as st
 from streamlit_drawable_canvas import st_canvas
 
-from src.utils.constants import DEFAULT_COUNTRY_CODE
-from src.utils.countries import get_all_country_names
-from src.utils.geography import filter_landmasses, load_country_geometries
-from src.utils.scoring import (
+from utils.constants import DEFAULT_COUNTRY_CODE
+from utils.countries import get_all_country_names
+from utils.geography import filter_landmasses, load_country_geometries
+from utils.scoring import (
     calculate_score_breakdown,
     country_to_mask,
     create_overlay,
