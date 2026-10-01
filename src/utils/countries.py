@@ -6,10 +6,6 @@ from src.utils.geography import load_country_geometries
 def format_country_name(country: pycountry.db.Country) -> str:
     """Build a readable country label with its flag for the sidebar dropdown.
 
-    Comma-separated name segments are reversed and joined with spaces; for example,
-    ``Korea, Republic of`` becomes ``Republic of Korea``. Names without a comma-space
-    separator are kept as supplied by pycountry.
-
     Args:
         country (pycountry.db.Country): Country record exposing ``name`` and ``flag``.
 
