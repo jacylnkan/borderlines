@@ -3,8 +3,8 @@ from copy import deepcopy
 import streamlit as st
 from streamlit_drawable_canvas import st_canvas
 
-from src.utils.constants import DEFAULT_COUNTRY_CODE
-from src.utils.utils import get_all_country_names
+from utils.constants import DEFAULT_COUNTRY_CODE
+from utils.utils import get_all_country_names
 
 st.set_page_config(page_title="BorderLines", page_icon="🌍")
 st.title("BorderLines 🌍")

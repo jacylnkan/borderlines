@@ -6,17 +6,27 @@ def format_country_name(country: pycountry.db.Country) -> str:
     Format the country name for display in the selectbox, including the country flag.
 
     Args:
-        country (ExistingCountries): A pycountry ExistingCountries object.
+        country (pycountry.db.Country): A pycountry ExistingCountries object.
 
     Returns:
         str: Formatted string with country name and flag.
     """
-    # A country may include a comma and be formatted as such:
-    # Korea, Republic Of
-    # Reformat to Republic Of Korea
+    # Countries that include a comma in their name as well as one of the following words as the
+    # last word must be reformatted. Examples:
+    #   Korea, Republic of -> Republic Of Korea
+    #   Virgin Islands, British -> British Virgin Islands
+    # Otherwise, use only the first part of the name before the comma. Examples:
+    #   Taiwan, Province of China -> Taiwan
+    #   Bonaire, Sint Eustatius and Saba -> Bonaire
+    keywords = ["of", "the", "British", "U.S."]
+
     name_parts = country.name.split(", ")
     if len(name_parts) > 1:
-        formatted_name = " ".join(reversed(name_parts))
+        original_last_word = country.name.split()[-1]
+        if original_last_word in keywords:
+            formatted_name = f"{name_parts[1]} {name_parts[0]}"
+        else:
+            formatted_name = name_parts[0]
     else:
         formatted_name = country.name
 
