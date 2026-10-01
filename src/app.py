@@ -35,6 +35,18 @@ landmass_cutoff = st.sidebar.slider(
     ),
 )
 
+gap_tolerance = st.sidebar.slider(
+    "Gap tolerance (canvas pixels)",
+    min_value=5,
+    max_value=100,
+    value=40,
+    step=5,
+    help=(
+        "Increase this to connect strokes across larger gaps and help close outlines. "
+        "The nearest endpoints are joined with straight lines."
+    ),
+)
+
 country_names = get_all_country_names()
 country_code = st.sidebar.selectbox(
     "Country",
@@ -49,8 +61,14 @@ selected_country_name_no_flag = " ".join(country_names[country_code_str].split("
 st.subheader(f"Draw the borders of {selected_country_name_no_flag}!")
 st.caption("Draw with your mouse. Use the canvas toolbar to undo or clear.")
 st.caption(
-    "Use one closed stroke per landmass, finishing near where you started. "
+    "Lift your pen whenever you like and continue near a previous stroke's endpoint. "
+    "You can draw sections in either direction; nearby strokes join when you submit. "
+    "Small gaps and accidental crossings are fixed automatically. "
     "Keep north at the top; position and overall size do not affect the score."
+)
+st.caption(
+    f"Strokes up to {gap_tolerance} canvas pixels apart can join. "
+    "Increase Gap tolerance in the sidebar if sections are still unfinished."
 )
 st.caption(
     f"The reference keeps landmasses at least {landmass_cutoff}% of the largest landmass's "
@@ -81,7 +99,9 @@ if st.button("Submit drawing", type="primary", disabled=geometry is None):
         st.error("Draw the country's borders before submitting.")
     else:
         try:
-            drawing_mask = drawing_to_mask(drawing, min_area_ratio=landmass_cutoff / 100)
+            drawing_mask = drawing_to_mask(
+                drawing, min_area_ratio=landmass_cutoff / 100, gap_tolerance=gap_tolerance
+            )
             target_geometry = filter_landmasses(geometry, landmass_cutoff / 100)
             country_mask = country_to_mask(target_geometry)
             score_breakdown = calculate_score_breakdown(drawing_mask, country_mask)
@@ -95,12 +115,16 @@ if st.button("Submit drawing", type="primary", disabled=geometry is None):
                 "score": score_breakdown["score"],
                 "score_breakdown": score_breakdown,
                 "landmass_cutoff": landmass_cutoff,
+                "gap_tolerance": gap_tolerance,
                 "overlay": create_overlay(drawing_mask, country_mask),
             }
             st.success(f"Your drawing of {selected_country_name_no_flag} was submitted!")
 
 submission = st.session_state.get("submission")
 if submission and submission["country_code"] == country_code_str:
+    if submission.get("gap_tolerance") != gap_tolerance:
+        st.info("Submit your drawing again to use the current gap tolerance.")
+        st.stop()
     if submission.get("landmass_cutoff") != landmass_cutoff:
         st.info("Submit your drawing again to score it with the current landmass cutoff.")
         st.stop()
@@ -130,6 +154,5 @@ if submission and submission["country_code"] == country_code_str:
     st.caption("Blue: actual country · Orange: your drawing · Purple: overlap")
     st.caption(
         "Area overlap is reduced by border mismatches and distant contour sections. "
-        "Both shapes are centered and scaled uniformly; proportions and orientation count. "
-        "Submit again after editing to update your result."
+        "Both shapes are centered and scaled uniformly; proportions and orientation count."
     )

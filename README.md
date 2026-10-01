@@ -16,12 +16,25 @@ Open the local URL printed by Streamlit (usually http://localhost:8501).
 
 - Choose from the nearly 200 countries and territories supported by the map dataset,
   sorted by display name.
-- Draw one continuous closed outline per landmass, keeping north at the top.
-  Small endpoint gaps (up to 10% of the stroke's bounding-box diagonal) close
-  automatically. Open strokes, crossing outlines, and empty drawings are rejected.
+- Draw each landmass in as many strokes as you like, keeping north at the top.
+  Lift the pen and continue near a previous endpoint; strokes can be drawn in either
+  direction or out of sequence. The nearest endpoints within **40 canvas pixels**
+  are joined by default. Adjust **Gap tolerance (canvas pixels)** in the sidebar
+  from 5 to 100 for larger or smaller gaps, then resubmit. Independently closed
+  islands stay separate. Larger tolerances can also connect nearby open islands;
+  check the overlay to see the resulting shape.
+  Small gaps in the assembled outline close automatically with a straight segment.
+  Final closure allows the larger of the chosen tolerance and 20% of the outline's
+  diagonal, provided the gap is no more than 25% of the traced length. This keeps
+  short unfinished arcs available to join rather than turning them into tiny islands.
+  Crossings and retraced sections are repaired into filled regions rather than
+  rejected. Clearly unfinished outlines, empty drawings, and strokes enclosing
+  no area still show a reminder to finish drawing.
   Adjust the stroke width and color in the sidebar, or use the toolbar to undo/clear.
 - Click **Submit drawing** to see a shape-match score out of 100 and an overlay:
   blue is the real country, orange is your drawing, and purple is their overlap.
+  The overlay shows the repaired outline used for scoring. Cleanup preserves border
+  detail rather than smoothing it or replacing the drawing with its convex hull.
 - Both shapes are centered and uniformly scaled to 256 × 256 masks. Scoring combines
   filled-area overlap with border matching and contour distance. Drawing size,
   position, color, and line thickness do not count; aspect ratio and orientation do.
@@ -29,7 +42,7 @@ Open the local URL printed by Streamlit (usually http://localhost:8501).
   By default, only landmasses with at least **5% of the largest landmass's area**
   are included. Change **Minimum landmass size (%)** in the sidebar; 0 restores all
   land areas. The largest landmass is always retained, even for very small countries.
-  Separate drawn strokes are filled and combined; drawing interior holes is not
+  Completed outlines are filled and combined; drawing interior holes is not
   supported yet.
 - The latest successful submission stays in the current Streamlit session. Editing
   requires resubmitting to update the displayed result. Submissions are not permanent.

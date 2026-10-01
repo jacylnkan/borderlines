@@ -4,6 +4,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 from pyproj import CRS, Transformer
 from scipy.ndimage import binary_erosion, distance_transform_edt
+from shapely import make_valid
 from shapely.geometry import Polygon
 from shapely.ops import transform, unary_union
 
@@ -124,7 +125,8 @@ def _sample_path(commands):
 
     Raises:
         ValueError: Coordinates are nonfinite or nonnumeric, command types/order or
-            coordinate counts are unsupported, or fewer than three points result.
+            coordinate counts are unsupported, or fewer than two points result.
+            Two-point fragments are allowed because other strokes can complete them.
     """
     points = []
     closed = False
@@ -155,9 +157,9 @@ def _sample_path(commands):
         elif kind in ("Z", "z") and points:
             closed = True
         else:
-            raise ValueError("Use one continuous freehand stroke for each landmass.")
-    if len(points) < 3:
-        raise ValueError("Draw an outline enclosing an area before submitting.")
+            raise ValueError("This stroke has unsupported path commands. Please redraw it.")
+    if len(points) < 2:
+        raise ValueError("Draw a border segment before submitting.")
     return np.asarray(points), closed
 
 
@@ -168,8 +170,9 @@ def _canvas_points(obj):
     translation, then invert y to convert canvas coordinates to Cartesian coordinates.
     Use stroke width only to recover Fabric's positioning; do not inflate the filled
     outline by the painted stroke. When pathOffset is absent, estimate it from the
-    sampled bounds. A nonexplicitly closed path must end within 10% of its sampled
-    bounding-box diagonal from its starting point; Polygon closes accepted gaps later.
+    sampled bounds. Append the starting point for an explicit Z command. Otherwise
+    leave endpoints open so ``_assemble_outlines`` can join separate pen strokes
+    before deciding whether a complete landmass has been drawn.
 
     Args:
         obj (dict): Serialized Fabric Path object with a ``path`` command list and
@@ -182,7 +185,7 @@ def _canvas_points(obj):
 
     Raises:
         ValueError: Path sampling fails, skew is nonzero, transformed coordinates are
-            nonfinite, or an open path's endpoint gap exceeds the closure tolerance.
+            nonfinite.
     """
     points, closed = _sample_path(obj.get("path", []))
     bounds_min, bounds_max = points.min(axis=0), points.max(axis=0)
@@ -208,21 +211,142 @@ def _canvas_points(obj):
     points = ((points - offset) * scale * flips) @ rotation.T + center
     if not np.isfinite(points).all():
         raise ValueError("The drawing contains invalid coordinates.")
-    span = np.linalg.norm(np.ptp(points, axis=0))
-    if not closed and np.linalg.norm(points[-1] - points[0]) > 0.1 * span:
-        raise ValueError("Close each outline: finish your stroke near where it started.")
+    if closed and not np.array_equal(points[0], points[-1]):
+        points = np.vstack((points, points[0]))
     # Canvas y increases downwards; geometry y increases upwards.
     points[:, 1] *= -1
     return points
 
 
-def drawing_to_mask(drawing, size=256, padding=12, min_area_ratio=0.0):
+def _assemble_outlines(paths, join_tolerance=40.0):
+    """Join nearby stroke endpoints into complete landmasses before filling them.
+
+    Repeatedly choose the shortest eligible endpoint connection across all paths.
+    Reverse a stroke when needed, so drawing direction and input order do not impose
+    a required tracing sequence. Self-closure competes with joins: closer continuation
+    strokes are attached before a larger closing gap is bridged. Exact closures take
+    priority over joins, preserving independently closed islands even if they touch.
+
+    A chain may close when its endpoints are within 20% of its bounding-box diagonal
+    (at least join_tolerance canvas units), the gap is at most 25% of the traced length,
+    and its
+    points are not collinear. The length check keeps short arcs available for joining
+    instead of treating them as tiny closed islands. The convex hull is
+    used only to check for noncollinearity; the actual stroke is passed unchanged to
+    ``_repair_outline``. Ambiguous nearby endpoints are resolved by nearest distance;
+    this is an endpoint heuristic, not recognition of the intended country's shape.
+
+    Args:
+        paths (Sequence[numpy.ndarray]): Finite Cartesian path arrays of shape (N, 2),
+            each with at least two points and resolved Fabric object transforms.
+        join_tolerance (float): Maximum gap between different strokes in canvas units,
+            defaulting to 40. Also sets the minimum final-closure tolerance. Must be
+            finite and nonnegative. Gaps are connected with straight segments.
+
+    Returns:
+        list: Repaired Polygon/MultiPolygon landmasses assembled from every path.
+        Input arrays are not modified; stroke style has no effect on joining.
+
+    Raises:
+        ValueError: The tolerance is invalid, remaining fragments cannot form land, or
+            repairing an assembled outline fails to produce a positive-area region.
+    """
+    if not np.isfinite(join_tolerance) or join_tolerance < 0:
+        raise ValueError("Gap tolerance must be finite and nonnegative.")
+    remaining = list(paths)
+    polygons = []
+    while remaining:
+        best_distance = float("inf")
+        connection = None
+        # Inspect closures first so a complete island wins ties with adjacent strokes.
+        for index, points in enumerate(remaining):
+            gap = np.linalg.norm(points[-1] - points[0])
+            tolerance = max(join_tolerance, 0.2 * np.linalg.norm(np.ptp(points, axis=0)))
+            traced_length = np.linalg.norm(np.diff(points, axis=0), axis=1).sum()
+            if (
+                len(points) >= 3
+                and gap <= tolerance
+                and gap <= 0.25 * traced_length
+                and gap < best_distance
+                and Polygon(points).convex_hull.area > 0
+            ):
+                best_distance = gap
+                connection = (index, index, 0, 0)
+        for first in range(len(remaining)):
+            for second in range(first + 1, len(remaining)):
+                a = remaining[first][[0, -1]]
+                b = remaining[second][[0, -1]]
+                distances = np.linalg.norm(a[:, None, :] - b[None, :, :], axis=2)
+                a_end, b_end = np.unravel_index(np.argmin(distances), distances.shape)
+                gap = distances[a_end, b_end]
+                if gap <= join_tolerance and gap < best_distance:
+                    best_distance = gap
+                    connection = (first, second, a_end, b_end)
+        if connection is None:
+            raise ValueError(
+                "Some border sections are unfinished. Increase Gap tolerance in the sidebar "
+                "or continue from their ends to complete the outline."
+            )
+        first, second, a_end, b_end = connection
+        if first == second:
+            polygons.append(_repair_outline(remaining.pop(first)))
+        else:
+            a, b = remaining[first], remaining.pop(second)
+            if a_end == 0:
+                a = a[::-1]
+            if b_end == 1:
+                b = b[::-1]
+            remaining[first] = np.vstack((a, b))
+    return polygons
+
+
+def _repair_outline(points):
+    """Turn a nearly closed, possibly self-crossing stroke into valid filled land.
+
+    Close the endpoint gap with a straight segment, then use Shapely's linework-based
+    repair to split crossings into valid polygonal regions. Preserve those regions,
+    including multiple lobes and holes, while discarding collapsed line or point
+    fragments from retracing. Do not smooth borders or replace them with a convex hull.
+    Valid polygons pass through unchanged.
+
+    Args:
+        points (numpy.ndarray): Finite Cartesian coordinates of shape ``(N, 2)``,
+            with at least three points. Endpoint-gap validation must already have
+            been performed by ``_assemble_outlines``.
+
+    Returns:
+        shapely.geometry.Polygon | shapely.geometry.MultiPolygon: Valid filled
+        polygonal regions of the original stroke, suitable for union and scoring.
+
+    Raises:
+        ValueError: Repair produces no polygonal region with positive area, as for
+            a collinear stroke or a line traced back over itself.
+    """
+    polygon = Polygon(points)
+    if polygon.is_valid and polygon.area > 0:
+        return polygon
+    pending = [make_valid(polygon)]
+    polygons = []
+    while pending:
+        part = pending.pop()
+        if part.geom_type == "Polygon" and not part.is_empty and part.area > 0:
+            polygons.append(part)
+        elif part.geom_type in ("MultiPolygon", "GeometryCollection"):
+            pending.extend(part.geoms)
+    if not polygons:
+        raise ValueError("Draw an outline enclosing an area before submitting.")
+    return unary_union(polygons)
+
+
+def drawing_to_mask(drawing, size=256, padding=12, min_area_ratio=0.0, gap_tolerance=40.0):
     """Validate, fill, filter, and normalize a canvas drawing for shape comparison.
 
-    Accept Fabric's ``path`` and ``Path`` object types. Each stroke must independently
-    enclose a positive, non-self-intersecting area; small endpoint gaps accepted by
-    ``_canvas_points`` are closed by Polygon. Union strokes before filtering, so
-    overlapping strokes form one landmass. Nested strokes add land rather than holes.
+    Accept Fabric's ``path`` and ``Path`` object types. Transform all strokes into
+    common coordinates, then join nearby endpoints with ``_assemble_outlines``. Each
+    completed chain must enclose positive area after automatic repair. Accepted gaps
+    close with straight segments; crossings and retraced sections are repaired by
+    ``_repair_outline``. Union landmasses before filtering so overlapping outlines
+    form one component. Nested outlines add land rather than holes.
     Remove small disconnected components before the remaining shape is normalized.
 
     Args:
@@ -233,31 +357,30 @@ def drawing_to_mask(drawing, size=256, padding=12, min_area_ratio=0.0):
         min_area_ratio (float): Inclusive component-area threshold relative to the
             largest unioned component, in [0, 1]. Defaults to 0 (retain all). Areas
             here use Cartesian canvas units, not geographic coordinates.
+        gap_tolerance (float): Maximum inter-stroke gap in canvas units, defaulting to
+            40. Also increases final endpoint-closure tolerance; closure still requires
+            the gap to be at most 25% of the traced length to avoid closing short arcs.
 
     Returns:
         numpy.ndarray: Boolean ``(size, size)`` mask of retained filled landmasses,
         centered and uniformly scaled independently of stroke color and thickness.
 
     Raises:
-        ValueError: The cutoff is invalid, the drawing is empty or contains unsupported
-            objects, a stroke is open/degenerate/self-crossing, or path transformation
-            or mask rasterization fails validation.
+        ValueError: The cutoff or tolerance is invalid, the drawing contains unsupported
+            objects, fragments cannot form a complete outline or enclose no area after
+            repair, or path transformation or mask rasterization fails validation.
     """
     if not 0 <= min_area_ratio <= 1:
         raise ValueError("The landmass cutoff must be between 0 and 1.")
-    polygons = []
+    paths = []
     for obj in (drawing or {}).get("objects", []):
         # Fabric 7 serializes "Path"; older canvas versions used "path".
         if str(obj.get("type", "")).lower() != "path":
             raise ValueError("Use freehand outlines to draw the country.")
-        polygon = Polygon(_canvas_points(obj))
-        if polygon.area <= 0:
-            raise ValueError("Draw an outline enclosing an area before submitting.")
-        if not polygon.is_valid:
-            raise ValueError("Your outline crosses itself. Undo that stroke and try again.")
-        polygons.append(polygon)
-    if not polygons:
+        paths.append(_canvas_points(obj))
+    if not paths:
         raise ValueError("Draw the country's borders before submitting.")
+    polygons = _assemble_outlines(paths, join_tolerance=gap_tolerance)
     geometry = unary_union(polygons)
     if min_area_ratio and geometry.geom_type == "MultiPolygon":
         cutoff = max(part.area for part in geometry.geoms) * min_area_ratio
