@@ -14,6 +14,16 @@
     padding-bottom: 2rem;
 }
 
+.st-key-round_results_country_heading h3 {
+    text-align: center;
+    padding-bottom: 2rem;
+}
+
+.st-key-round_results_winner_announcement h2 {
+    text-align: center;
+    padding-bottom: 2rem;
+}
+
 .st-key-new_game_button {
     display: flex;
     align-items: center;
