@@ -417,7 +417,7 @@ def calculate_score_breakdown(drawing_mask, country_mask):
     the image as background. Include island edges and hole boundaries. Measure nearest
     Euclidean border distances in both directions with distance transforms.
 
-    Border precision/recall count distances within 1% of the image diagonal; their
+    Border precision/recall count distances within 2% of the image diagonal; their
     harmonic mean is the border F1. Let mean be the average of the two directional
     distance means, and p95 the larger directional 95th percentile. Contour quality is
     ``exp(-(0.5 * mean + 0.5 * p95) / (0.035 * diagonal))``. Using fractions in [0, 1],
