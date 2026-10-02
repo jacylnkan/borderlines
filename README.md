@@ -16,7 +16,7 @@ Open the local URL printed by Streamlit (usually http://localhost:8501).
 
 ### Game modes
 
-The welcome modal appears when you first open a session:
+The page appears when you first open a session:
 
 - **1 Player:** Selecting this option opens the drawing canvas immediately.
 - **2 Players:** Enter two different player names, then start the game. Player 1
@@ -67,9 +67,9 @@ projection, and scaling; distant tiny islands cannot stretch the target across t
 canvas. The score and overlay use the same filtered shapes. Changing the cutoff
 requires a new submission.
 
-With the supplied dataset, the 5% default keeps Great Britain and Northern Ireland,
-Japan's four largest islands, and New Zealand's two main islands. This is an **area
-filter**, not a mainland or distance filter: large overseas areas such as French
+With the supplied dataset, setting the minimum landmass size to 5% will keep Great Britain
+and Northern Ireland, Japan's four largest islands, and New Zealand's two main islands.
+This is an **area filter**, not a mainland or distance filter: large overseas areas such as French
 Guiana still qualify, and Greenland remains part of Denmark's sovereignty geometry.
 
 ### Difficulty settings
@@ -84,10 +84,9 @@ The sidebar's **Difficulty** section offers:
   The result displays the counterclockwise rotation used in the overlay.
 - **Coastline rounding:** 0–5 in half-pixel steps, defaulting to 0 for full detail.
   Gaussian smoothing softens both filled masks before border comparison, making
-  fine coastline jaggedness less important. Strength is measured in the normalized
-  256 × 256 masks, so drawing size does not change the setting. Larger values can
-  remove tiny islands, narrow features, and small bays. Smoothing is not guaranteed
-  to increase every drawing's score; it changes the detail level being compared.
+  fine coastline jaggedness less important. Larger values can remove tiny islands,
+  narrow features, and small bays. Smoothing is not guaranteed to increase every drawing's
+  score; it changes the detail level being compared.
 
 The score components and overlay always use the same processed shapes. Changing a
 difficulty setting requires resubmission; the original drawing on the canvas is kept.
@@ -102,10 +101,9 @@ The result shows three components, each on a 0–100 scale:
    the real border; recall measures how much of the real border you captured.
    Their harmonic mean penalizes both extra edges and missing features. Edges within
    2% of the image diagonal (about 7 pixels at 256 × 256) count as nearby.
-3. **Contour similarity:** an exponential distance penalty combining the average
-   border error in both directions with the larger directional 95th-percentile error.
-   This penalizes badly misplaced peninsulas, islands, and other contour sections
-   without letting a single stray pixel dominate the result.
+3. **Contour similarity:** an exponential distance penalty. Measures how far apart the two
+   outlines are, considering both typical differences and larger mistakes. Misplaced
+   peninsulas or islands lower the score, while a single stray pixel has little effect.
 
 Using component values between 0 and 1, the final score is:
 
@@ -113,22 +111,14 @@ Using component values between 0 and 1, the final score is:
 100 * area_overlap * border_match**0.30 * contour_similarity**0.15
 ```
 
-The contour-distance component is `exp(-(0.5 * mean + 0.5 * p95) / (0.035 * diagonal))`.
-The final score never exceeds raw area overlap, so covering roughly the right area
-with a blob is no longer sufficient for a high score. An identical mask scores 100;
-small hand-drawing errors receive some tolerance. Rotation is aligned only when enabled;
-reflection is never aligned away. These weights are game heuristics rather than calibrated accuracy
-percentages; naturally compact countries can still resemble simple rounded shapes.
-
 ## Map data
 
-The app reads `data/ne_50m_admin_0_sovereignty.shp` directly with GeoPandas; no GeoJSON
-conversion is needed. Keep the `.shp`, `.shx`, `.dbf`, `.prj`, and `.cpg` files together.
+The app reads `data/ne_50m_admin_0_sovereignty.shp` directly with GeoPandas.
+Keep the `.shp`, `.shx`, `.dbf`, `.prj`, and `.cpg` files together.
 The loader converts the coordinate system to WGS84 in memory and caches the shapes.
 
 This Natural Earth sovereignty dataset maps to 197 `pycountry` country codes.
 The dropdown only includes countries with a mapped outline, including entries that
 need fallback codes such as the US, UK, and France. The sovereignty shapes group
-islands and overseas territories. The landmass cutoff removes small components,
-but large distant territories can still make targets widely dispersed. Dataset
-borders and groupings define the game's reference shapes.
+islands and overseas territories. Dataset borders and groupings define the game's
+reference shapes.
