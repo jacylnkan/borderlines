@@ -3,7 +3,7 @@
 import numpy as np
 from PIL import Image, ImageDraw
 from pyproj import CRS, Transformer
-from scipy.ndimage import binary_erosion, distance_transform_edt
+from scipy.ndimage import binary_erosion, distance_transform_edt, gaussian_filter, rotate
 from shapely import make_valid
 from shapely.geometry import Polygon
 from shapely.ops import transform, unary_union
@@ -421,7 +421,8 @@ def calculate_score_breakdown(drawing_mask, country_mask):
     harmonic mean is the border F1. Let mean be the average of the two directional
     distance means, and p95 the larger directional 95th percentile. Contour quality is
     ``exp(-(0.5 * mean + 0.5 * p95) / (0.035 * diagonal))``. Using fractions in [0, 1],
-    the final score is ``100 * IoU * border_F1**0.65 * contour_quality**0.35``.
+    the final score is ``100 * IoU * border_F1**0.30 * contour_quality**0.15``.
+    IoU is the primary factor; the smaller contour exponents apply gentler penalties.
     These weights are game heuristics, not calibrated geographic accuracy percentages.
 
     Args:
@@ -462,7 +463,7 @@ def calculate_score_breakdown(drawing_mask, country_mask):
     to_country = distance_transform_edt(~country_border)[drawing_border]
     to_drawing = distance_transform_edt(~drawing_border)[country_border]
     diagonal = float(np.hypot(*country_mask.shape))
-    tolerance = 0.01 * diagonal
+    tolerance = 0.02 * diagonal
     precision = float(np.mean(to_country <= tolerance))
     recall = float(np.mean(to_drawing <= tolerance))
     border_match = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
@@ -472,13 +473,150 @@ def calculate_score_breakdown(drawing_mask, country_mask):
     contour_similarity = float(
         np.exp(-(0.5 * mean_distance + 0.5 * tail_distance) / (0.035 * diagonal))
     )
-    score = 100 * overlap * border_match**0.65 * contour_similarity**0.35
+
+    score = 100 * overlap * border_match**0.30 * contour_similarity**0.15
+
     return {
         "score": float(np.clip(score, 0, 100)),
         "area_overlap": 100 * overlap,
         "border_match": 100 * border_match,
         "contour_similarity": 100 * contour_similarity,
     }
+
+
+def _normalize_rotated_mask(mask, size, padding=12):
+    """Fit rotated land into a square without clipping or changing its proportions.
+
+    Args:
+        mask (numpy.ndarray): Two-dimensional Boolean image containing land.
+        size (int): Output side length; must exceed twice the padding plus one.
+        padding (int): Output margin, defaulting to the scoring pipeline's 12 pixels.
+
+    Returns:
+        numpy.ndarray: Centered Boolean square mask. An empty input returns empty land.
+        Resampling uses nearest-neighbor pixels and one shared scale for both axes.
+    """
+    result = np.zeros((size, size), dtype=bool)
+    rows, columns = np.nonzero(mask)
+    if not len(rows):
+        return result
+    row_slice = slice(rows.min(), rows.max() + 1)
+    column_slice = slice(columns.min(), columns.max() + 1)
+    crop = mask[row_slice, column_slice]
+    height, width = crop.shape
+    scale = (size - 2 * padding) / max(height, width)
+    new_width = max(1, round(width * scale))
+    new_height = max(1, round(height * scale))
+    image = Image.fromarray(crop).resize(
+        (new_width, new_height), resample=Image.Resampling.NEAREST
+    )
+    top, left = (size - new_height) // 2, (size - new_width) // 2
+    result[slice(top, top + new_height), slice(left, left + new_width)] = np.asarray(image)
+    return result
+
+
+def smooth_coastline(mask, rounding=0):
+    """Round fine border detail using Gaussian smoothing of the filled land mask.
+
+    Args:
+        mask (numpy.ndarray): Two-dimensional Boolean scoring mask.
+        rounding (float): Gaussian standard deviation in normalized-mask pixels,
+            from 0 to 5. Zero preserves every pixel. Larger values round corners,
+            soften small bays, and can remove tiny islands or narrow features.
+
+    Returns:
+        numpy.ndarray: Boolean mask thresholded at 0.5 after smoothing, or a copy of
+        the original if smoothing would remove all land. No alignment or scaling is
+        performed. Apply the same setting to both masks for fair comparison.
+
+    Raises:
+        ValueError: Rounding is not finite or is outside [0, 5].
+    """
+    if not np.isfinite(rounding) or not 0 <= rounding <= 5:
+        raise ValueError("Coastline rounding must be between 0 and 5.")
+    original = np.asarray(mask, dtype=bool)
+    if rounding == 0:
+        return original.copy()
+    smoothed = gaussian_filter(original.astype(float), rounding, mode="constant") >= 0.5
+    return smoothed if smoothed.any() else original.copy()
+
+
+def score_with_difficulty(drawing_mask, country_mask, allow_rotation=False, rounding=0):
+    """Score optionally rounded shapes and search for the best drawing orientation.
+
+    Smooth both masks before comparison. If rotation is enabled, retain the zero-angle
+    baseline and test the entire circle at 15-degree intervals, then refine within
+    15 degrees of the three best coarse candidates at one-degree intervals. This is
+    an approximate angular search, not a guarantee of the continuous global optimum.
+    Rotate with an expanded canvas and renormalize each candidate's bounding box so
+    oblique orientations cannot clip land or change its relative overall scale.
+    Reflections are never searched. Strict score improvements win ties, preserving
+    the baseline when it already matches perfectly.
+
+    Args:
+        drawing_mask (numpy.ndarray): Square, normalized player mask, at least 26 pixels
+            per side, with the standard 12-pixel margin used by ``drawing_to_mask``.
+        country_mask (numpy.ndarray): Reference mask with identical shape and margin.
+        allow_rotation (bool): Search for a better orientation when True; defaults False.
+        rounding (float): Coastline smoothing strength in [0, 5], defaulting to zero.
+
+    Returns:
+        dict: ``breakdown`` contains the overall and component scores; ``drawing_mask``
+        and ``country_mask`` are the exact processed masks used for the winning score;
+        ``rotation_degrees`` is the counterclockwise image rotation in [0, 360).
+        Rotation-enabled scores cannot fall below the corresponding zero-angle score.
+
+    Raises:
+        ValueError: Mask validation fails, inputs are not matching squares of adequate
+            size, or rounding is outside its supported range.
+    """
+    shape = np.asarray(drawing_mask).shape
+    if shape[0] != shape[1] or shape[0] < 26:
+        raise ValueError("Difficulty scoring requires square masks at least 26 pixels wide.")
+    drawing = smooth_coastline(drawing_mask, rounding)
+    country = smooth_coastline(country_mask, rounding)
+    baseline = calculate_score_breakdown(drawing, country)
+    result = {
+        "breakdown": baseline,
+        "drawing_mask": drawing,
+        "country_mask": country,
+        "rotation_degrees": 0.0,
+    }
+    if not allow_rotation or not drawing.any() or not country.any() or baseline["score"] == 100:
+        return result
+
+    candidates = {0: baseline["score"]}
+
+    def evaluate(angle):
+        """Evaluate one integer angle once and retain a strictly better scoring mask.
+
+        Args:
+            angle (int): Counterclockwise angle, wrapped modulo 360 for deduplication.
+
+        Returns:
+            None: Updates the enclosing score cache and best-result dictionary in place.
+        """
+        angle %= 360
+        if angle in candidates:
+            return
+        rotated = rotate(
+            drawing.astype(np.uint8), angle, reshape=True, order=0, prefilter=False
+        )
+        aligned = _normalize_rotated_mask(rotated > 0, shape[0])
+        breakdown = calculate_score_breakdown(aligned, country)
+        candidates[angle] = breakdown["score"]
+        if breakdown["score"] > result["breakdown"]["score"]:
+            result.update(
+                breakdown=breakdown, drawing_mask=aligned, rotation_degrees=float(angle)
+            )
+
+    for angle in range(15, 360, 15):
+        evaluate(angle)
+    best_coarse = sorted(candidates, key=candidates.get, reverse=True)[:3]
+    for center in best_coarse:
+        for angle in range(center - 15, center + 16):
+            evaluate(angle)
+    return result
 
 
 def create_overlay(drawing_mask, country_mask):

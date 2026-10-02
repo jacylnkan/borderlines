@@ -37,7 +37,8 @@ Open the local URL printed by Streamlit (usually http://localhost:8501).
   detail rather than smoothing it or replacing the drawing with its convex hull.
 - Both shapes are centered and uniformly scaled to 256 × 256 masks. Scoring combines
   filled-area overlap with border matching and contour distance. Drawing size,
-  position, color, and line thickness do not count; aspect ratio and orientation do.
+  position, color, and line thickness do not count; aspect ratio counts, and orientation
+  counts when rotation matching is disabled.
 - The country is rendered with a local Lambert azimuthal equal-area projection.
   By default, only landmasses with at least **5% of the largest landmass's area**
   are included. Change **Minimum landmass size (%)** in the sidebar; 0 restores all
@@ -59,6 +60,27 @@ Japan's four largest islands, and New Zealand's two main islands. This is an **a
 filter**, not a mainland or distance filter: large overseas areas such as French
 Guiana still qualify, and Greenland remains part of Denmark's sovereignty geometry.
 
+### Difficulty settings
+
+The sidebar's **Difficulty** section offers:
+
+- **Allow rotations:** Off by default. When enabled, compare orientations around the
+  full circle every 15 degrees, then refine the three best neighborhoods at one-degree
+  intervals. Keep the highest score, including the unrotated baseline. This approximate
+  search rotates the entire drawing, keeps island positions relative to each other,
+  avoids clipping, and normalizes size again after rotation. It does not mirror shapes.
+  The result displays the counterclockwise rotation used in the overlay.
+- **Coastline rounding:** 0–5 in half-pixel steps, defaulting to 0 for full detail.
+  Gaussian smoothing softens both filled masks before border comparison, making
+  fine coastline jaggedness less important. Strength is measured in the normalized
+  256 × 256 masks, so drawing size does not change the setting. Larger values can
+  remove tiny islands, narrow features, and small bays. Smoothing is not guaranteed
+  to increase every drawing's score; it changes the detail level being compared.
+
+The score components and overlay always use the same processed shapes. Changing a
+difficulty setting requires resubmission; the original drawing on the canvas is kept.
+For multiplayer rounds, use the same difficulty settings for all players.
+
 ### How the score works
 
 The result shows three components, each on a 0–100 scale:
@@ -67,7 +89,7 @@ The result shows three components, each on a 0–100 scale:
 2. **Border match:** boundary F1. Precision measures how much of your border is near
    the real border; recall measures how much of the real border you captured.
    Their harmonic mean penalizes both extra edges and missing features. Edges within
-   1% of the image diagonal (about 3.6 pixels at 256 × 256) count as nearby.
+   2% of the image diagonal (about 7 pixels at 256 × 256) count as nearby.
 3. **Contour similarity:** an exponential distance penalty combining the average
    border error in both directions with the larger directional 95th-percentile error.
    This penalizes badly misplaced peninsulas, islands, and other contour sections
@@ -76,14 +98,14 @@ The result shows three components, each on a 0–100 scale:
 Using component values between 0 and 1, the final score is:
 
 ```text
-100 * area_overlap * border_match**0.65 * contour_similarity**0.35
+100 * area_overlap * border_match**0.30 * contour_similarity**0.15
 ```
 
 The contour-distance component is `exp(-(0.5 * mean + 0.5 * p95) / (0.035 * diagonal))`.
 The final score never exceeds raw area overlap, so covering roughly the right area
 with a blob is no longer sufficient for a high score. An identical mask scores 100;
-small hand-drawing errors receive some tolerance. Rotation and reflection are not
-aligned away. These weights are game heuristics rather than calibrated accuracy
+small hand-drawing errors receive some tolerance. Rotation is aligned only when enabled;
+reflection is never aligned away. These weights are game heuristics rather than calibrated accuracy
 percentages; naturally compact countries can still resemble simple rounded shapes.
 
 ## Map data
