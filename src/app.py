@@ -3,7 +3,11 @@ from copy import deepcopy
 import streamlit as st
 from streamlit_drawable_canvas import st_canvas
 
-from src.utils.constants import DEFAULT_COUNTRY_CODE, DEFAULT_GAP_TOLERANCE_PIXELS
+from src.utils.constants import (
+    DEFAULT_COUNTRY_CODE,
+    DEFAULT_GAP_TOLERANCE_PIXELS,
+    HTML_SETTINGS,
+)
 from src.utils.countries import get_all_country_names
 from src.utils.geography import filter_landmasses, load_country_geometries
 from src.utils.scoring import (
@@ -12,9 +16,71 @@ from src.utils.scoring import (
     drawing_to_mask,
     score_with_difficulty,
 )
+from src.utils.settings import configure_game, start_game
 
 st.set_page_config(page_title="BorderLines", page_icon="🌍")
-st.title("BorderLines 🌍")
+st.html(HTML_SETTINGS)
+
+current_stage = st.session_state.get("game", {}).get("stage")
+if current_stage != "turn" and current_stage is not None:
+    st.title("BorderLines 🌍")
+
+if "game" not in st.session_state:
+    configure_game()
+    st.stop()
+
+game = st.session_state["game"]
+multiplayer = len(game["players"]) > 1
+
+with st.sidebar.container(key="game_settings_heading"):
+    st.subheader("Game Settings")
+
+with st.sidebar.container(key="new_game_button"):
+    if st.button("New game"):
+        st.session_state.pop("game", None)
+        st.session_state.pop("welcome_mode", None)
+        st.rerun()
+
+if game["stage"] == "turn":
+    player = game["players"][game["turn"]]
+    with st.container(key="turn_screen"):
+        st.title("BorderLines 🌍")
+        st.subheader(f"{player}, you're {'first' if game['turn'] == 0 else 'next'}!")
+        if game["turn"] == 0:
+            st.write(f"{player} starts, then {game['players'][1]} will draw the same country.")
+            st.write("Choose your country and difficulty settings on the next screen.")
+        else:
+            st.write(f"Pass the device to {player}. Your drawing starts on a fresh canvas.")
+            st.write("The country and difficulty settings are the same as the first turn.")
+        if st.button("Start my turn", type="primary"):
+            game["stage"] = "canvas"
+            st.rerun()
+    st.stop()
+
+if game["stage"] == "results":
+    first, second = game["submissions"]
+    st.subheader("Round results")
+    st.write(f"Country: {first['country_name']}")
+    if abs(first["score"] - second["score"]) < 0.05:
+        st.success("It's a tie!")
+    else:
+        winner = max(game["submissions"], key=lambda result: result["score"])
+        st.success(f"{winner['player_name']} wins!")
+    for column, result in zip(st.columns(2), game["submissions"]):
+        with column:
+            st.subheader(result["player_name"])
+            st.metric("Shape match", f"{result['score']:.1f}/100")
+            st.image(result["overlay"], width="stretch")
+            st.caption("Blue: country · Orange: drawing · Purple: overlap")
+    if st.button("Play another round", type="primary"):
+        start_game(game["players"])
+        st.rerun()
+    st.stop()
+
+locked = multiplayer and game["turn"] > 0
+round_settings = game["round_settings"]
+if multiplayer:
+    st.subheader(f"{game['players'][game['turn']]}'s turn")
 
 try:
     country_geometries = load_country_geometries()
@@ -28,7 +94,8 @@ landmass_cutoff = st.sidebar.slider(
     "Minimum landmass size (%)",
     min_value=0,
     max_value=20,
-    value=0,
+    value=round_settings.get("landmass_cutoff", 0),
+    disabled=locked,
     help=(
         "Keep landmasses at least this percentage of the largest landmass's geographic area. "
         "0 includes everything. 20 keeps landmasses at least one fifth as large as the largest."
@@ -38,14 +105,16 @@ landmass_cutoff = st.sidebar.slider(
 st.sidebar.subheader("Difficulty")
 allow_rotation = st.sidebar.checkbox(
     "Allow rotations",
-    value=False,
+    value=round_settings.get("difficulty", {}).get("allow_rotation", False),
+    disabled=locked,
     help="Try different drawing orientations and keep the highest shape-match score.",
 )
 coastline_rounding = st.sidebar.slider(
     "Coastline rounding",
     min_value=0.0,
     max_value=5.0,
-    value=0.0,
+    value=round_settings.get("difficulty", {}).get("rounding", 0.0),
+    disabled=locked,
     step=0.5,
     help=(
         "0 keeps full detail. Higher values soften jagged coastlines on both shapes. "
@@ -58,8 +127,9 @@ country_names = get_all_country_names()
 country_code = st.sidebar.selectbox(
     "Country",
     options=list(country_names),
-    index=list(country_names).index(DEFAULT_COUNTRY_CODE),
+    index=list(country_names).index(round_settings.get("country_code", DEFAULT_COUNTRY_CODE)),
     format_func=country_names.get,
+    disabled=locked,
 )
 
 country_code_str = str(country_code)
@@ -98,7 +168,7 @@ canvas_result = st_canvas(
     update_streamlit=True,
     drawing_mode="freedraw",
     return_image_data=False,
-    key=f"canvas_{country_code_str}",
+    key=f"canvas_{game['id']}_{game['turn']}_{country_code_str}",
 )
 
 if st.button("Submit drawing", type="primary", disabled=geometry is None):
@@ -133,6 +203,22 @@ if st.button("Submit drawing", type="primary", disabled=geometry is None):
                     comparison["drawing_mask"], comparison["country_mask"]
                 ),
             }
+            if multiplayer:
+                submission = st.session_state["submission"]
+                submission["player_name"] = game["players"][game["turn"]]
+                game["submissions"].append(submission)
+                game["round_settings"] = {
+                    "country_code": country_code_str,
+                    "difficulty": difficulty.copy(),
+                    "landmass_cutoff": landmass_cutoff,
+                }
+                st.session_state.pop("submission", None)
+                if game["turn"] == 0:
+                    game["turn"] = 1
+                    game["stage"] = "turn"
+                else:
+                    game["stage"] = "results"
+                st.rerun()
             st.success(f"Your drawing of {selected_country_name_no_flag} was submitted!")
 
 submission = st.session_state.get("submission")

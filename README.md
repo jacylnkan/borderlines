@@ -14,6 +14,21 @@ Open the local URL printed by Streamlit (usually http://localhost:8501).
 
 ## Drawing and scoring
 
+### Game modes
+
+The welcome modal appears when you first open a session:
+
+- **1 Player:** Selecting this option opens the drawing canvas immediately.
+- **2 Players:** Enter two different player names, then start the game. Player 1
+  sees a turn announcement before opening the canvas and choosing the country and
+  difficulty. After a valid submission, pass the device to player 2 at the handoff
+  screen. Player 2 gets a fresh canvas with the same country and scoring settings.
+  Neither player's score or reference overlay is revealed until both have submitted.
+  The results screen shows both scores and overlays and announces the winner or tie.
+
+This is local, pass-the-device play in one browser session. **Play another round**
+keeps the names and starts a fresh round; **New game** reopens the mode picker.
+
 - Choose from the nearly 200 countries and territories supported by the map dataset,
   sorted by display name.
 - Draw each landmass in as many strokes as you like, keeping north at the top.
