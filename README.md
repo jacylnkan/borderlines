@@ -19,10 +19,8 @@ Open the local URL printed by Streamlit (usually http://localhost:8501).
 - Draw each landmass in as many strokes as you like, keeping north at the top.
   Lift the pen and continue near a previous endpoint; strokes can be drawn in either
   direction or out of sequence. The nearest endpoints within **40 canvas pixels**
-  are joined by default. Adjust **Gap tolerance (canvas pixels)** in the sidebar
-  from 5 to 100 for larger or smaller gaps, then resubmit. Independently closed
-  islands stay separate. Larger tolerances can also connect nearby open islands;
-  check the overlay to see the resulting shape.
+  are joined by default. Independently closed islands stay separate. Larger tolerances
+  can also connect nearby open islands; check the overlay to see the resulting shape.
   Small gaps in the assembled outline close automatically with a straight segment.
   Final closure allows the larger of the chosen tolerance and 20% of the outline's
   diagonal, provided the gap is no more than 25% of the traced length. This keeps
@@ -39,12 +37,11 @@ Open the local URL printed by Streamlit (usually http://localhost:8501).
   filled-area overlap with border matching and contour distance. Drawing size,
   position, color, and line thickness do not count; aspect ratio counts, and orientation
   counts when rotation matching is disabled.
-- The country is rendered with a local Lambert azimuthal equal-area projection.
-  By default, only landmasses with at least **5% of the largest landmass's area**
-  are included. Change **Minimum landmass size (%)** in the sidebar; 0 restores all
-  land areas. The largest landmass is always retained, even for very small countries.
-  Completed outlines are filled and combined; drawing interior holes is not
-  supported yet.
+- The country is rendered with a local Lambert azimuthal equal-area projection. By
+  default, all landmasses are included. Change **Minimum landmass size (%)** in the
+  sidebar to filter out smaller islands and overseas territories. The cutoff percentage
+  is relative to the largest landmass, which is always retained, even for very small
+  countries.
 - The latest successful submission stays in the current Streamlit session. Editing
   requires resubmitting to update the displayed result. Submissions are not permanent.
 

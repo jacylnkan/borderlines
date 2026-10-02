@@ -284,8 +284,8 @@ def _assemble_outlines(paths, join_tolerance=40.0):
                     connection = (first, second, a_end, b_end)
         if connection is None:
             raise ValueError(
-                "Some border sections are unfinished. Increase Gap tolerance in the sidebar "
-                "or continue from their ends to complete the outline."
+                "Some border sections are unfinished. "
+                "Continue drawing near the endpoints of each stroke before submitting."
             )
         first, second, a_end, b_end = connection
         if first == second:
