@@ -35,7 +35,7 @@ def main() -> None:
 
     show_game_menu()
 
-    if game["stage"] != "turn":
+    if game["stage"] != "turn" and game["stage"] != "results":
         st.title("BorderLines 🌍")
     if game["stage"] == "turn":
         show_turn_screen(game)

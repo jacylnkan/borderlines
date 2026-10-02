@@ -64,12 +64,18 @@ def show_turn_screen(game: Game) -> None:
 def show_round_results(game: Game) -> None:
     """Reveal both scores and overlays, announce a winner, and offer another round."""
     first, second = game["submissions"]
-    st.write(f"Country: {first['country_name']}")
-    if abs(first["score"] - second["score"]) < 0.05:
-        st.subheader("It's a tie!")
-    else:
-        winner = max(game["submissions"], key=lambda result: result["score"])
-        st.success(f"{winner['player_name']} wins!")
+
+    with st.container(key="round_results_winner_announcement"):
+        if abs(first["score"] - second["score"]) < 0.05:
+            st.header("It's a tie!")
+        else:
+            winner = max(game["submissions"], key=lambda result: result["score"])
+            st.header(f"And the winner is... {winner['player_name']}!")
+            st.balloons()
+
+    with st.container(key="round_results_country_heading"):
+        st.subheader(f"{first['country_name']}")
+
     for column, result in zip(st.columns(2), game["submissions"]):
         with column:
             st.subheader(result["player_name"])
