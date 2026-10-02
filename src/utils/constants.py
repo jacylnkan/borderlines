@@ -1,51 +1,15 @@
+"""Defaults and project-relative paths."""
+
 from pathlib import Path
 
-MAP_DATA_PATH = Path(__file__).resolve().parents[2] / "data" / "ne_50m_admin_0_sovereignty.shp"
+PROJECT_ROOT: Path = Path(__file__).resolve().parents[2]
+MAP_DATA_PATH: Path = PROJECT_ROOT / "data" / "ne_50m_admin_0_sovereignty.shp"
+STYLES_PATH: Path = Path(__file__).resolve().parents[1] / "visualizations" / "styles.css"
 
-DEFAULT_COUNTRY_CODE = "CA"
-DEFAULT_GAP_TOLERANCE_PIXELS = 40
-HTML_SETTINGS = """
-<style>
-[data-testid="stDialog"] [role="dialog"] {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    margin: 0;
-    width: min(800px, calc(100vw - 2rem));
-    max-height: calc(100dvh - 2rem);
-    overflow-y: auto;
-}
-
-.st-key-game_settings_heading h3 {
-    text-align: center;
-    padding-bottom: 2rem;
-}
-
-.st-key-new_game_button {
-    display: flex;
-    align-items: center;
-    padding-bottom: 1rem;
-}
-.st-key-new_game_button [data-testid="stButton"] {
-    display: flex;
-    justify-content: center;
-}
-
-[data-testid="stMainBlockContainer"]:has(.st-key-turn_screen) {
-    padding-top: 1rem;
-    padding-bottom: 1rem;
-}
-.st-key-turn_screen {
-    min-height: calc(100dvh - 6rem);
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    text-align: center;
-}
-.st-key-turn_screen [data-testid="stButton"] {
-    display: flex;
-    justify-content: center;
-}
-</style>
-"""
+DEFAULT_COUNTRY_CODE: str = "CA"
+DEFAULT_GAP_TOLERANCE_PIXELS: float = 40.0
+MASK_SIZE: int = 256
+MASK_PADDING: int = 12
+CANVAS_BACKGROUND_COLOUR: str = "#eee"
+CANVAS_HEIGHT: int = 600
+CANVAS_WIDTH: int = 700
