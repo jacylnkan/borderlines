@@ -570,11 +570,19 @@ def score_with_difficulty(drawing_mask, country_mask, allow_rotation=False, roun
         ValueError: Mask validation fails, inputs are not matching squares of adequate
             size, or rounding is outside its supported range.
     """
-    shape = np.asarray(drawing_mask).shape
+    drawing_array = np.asarray(drawing_mask)
+    country_array = np.asarray(country_mask)
+    if drawing_array.shape != country_array.shape:
+        raise ValueError("Both masks must have the same dimensions.")
+    if drawing_array.ndim != 2 or not drawing_array.size:
+        raise ValueError("Scoring requires nonempty two-dimensional masks.")
+    shape = drawing_array.shape
     if shape[0] != shape[1] or shape[0] < 26:
         raise ValueError("Difficulty scoring requires square masks at least 26 pixels wide.")
-    drawing = smooth_coastline(drawing_mask, rounding)
-    country = smooth_coastline(country_mask, rounding)
+    if not np.isfinite(drawing_array).all() or not np.isfinite(country_array).all():
+        raise ValueError("Masks must contain finite values.")
+    drawing = smooth_coastline(drawing_array, rounding)
+    country = smooth_coastline(country_array, rounding)
     baseline = calculate_score_breakdown(drawing, country)
     result = {
         "breakdown": baseline,
