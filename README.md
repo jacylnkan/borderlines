@@ -43,7 +43,7 @@ keeps the names and starts a fresh round; **New game** reopens the mode picker.
   Crossings and retraced sections are repaired into filled regions rather than
   rejected. Clearly unfinished outlines, empty drawings, and strokes enclosing
   no area still show a reminder to finish drawing.
-  Adjust the stroke width and color in the sidebar, or use the toolbar to undo/clear.
+  Adjust the stroke width in the sidebar, or use the toolbar to undo/clear.
 - Click **Submit drawing** to see a shape-match score out of 100 and an overlay:
   blue is the real country, orange is your drawing, and purple is their overlap.
   The overlay shows the repaired outline used for scoring. Cleanup preserves border
