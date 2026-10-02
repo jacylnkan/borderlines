@@ -13,7 +13,9 @@ from src.utils.models import CanvasSettings, Game, RoundSettings, Submission
 def show_welcome() -> None:
     """Choose solo play immediately, or collect names before starting two-player play."""
     st.write("Draw a country from memory. Play solo or take turns on the same device.")
+
     mode = st.segmented_control("Game mode", ["1 Player", "2 Players"], key="welcome_mode")
+
     if mode == "1 Player":
         start_game(["You"])
         st.rerun()
@@ -62,10 +64,9 @@ def show_turn_screen(game: Game) -> None:
 def show_round_results(game: Game) -> None:
     """Reveal both scores and overlays, announce a winner, and offer another round."""
     first, second = game["submissions"]
-    st.subheader("Round results")
     st.write(f"Country: {first['country_name']}")
     if abs(first["score"] - second["score"]) < 0.05:
-        st.success("It's a tie!")
+        st.subheader("It's a tie!")
     else:
         winner = max(game["submissions"], key=lambda result: result["score"])
         st.success(f"{winner['player_name']} wins!")
